@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crash Game Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+</head>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+<script src="https://cdn.socket.io/3.1.3/socket.io.min.js" integrity="sha384-cPwlPLvBTa3sKAgddT6krw0cJat7egBga3DJepJyrLl4Q9/5WLra3rrnMcyTyOnh" crossorigin="anonymous"></script>
+<script>
+  console.log('crash game demo v2.0')
+
+  let PLAYER_ID = null
+
+  const url = window.location.host || 'http://localhost:9000';
+
+  const socket = io(url, {
+    path: '/socket.io/',
+    transports: ['websocket', 'polling']
+  });
+
+  socket.on('connect', () => {
+    console.log('connected')
+  })
+
+  socket.on('UPDATE_STATE', (data) => {
+    updateStatusBoard(data.state)
+  })
+
+  socket.on('ROUND_START', (data) => {
+    updateBetInputs()
+    clearInfoBoard()
+    clearBetsBoard()
+    updateRocketStatus(data.state.game)
+    updateStatusBoard(data.state)
+  })
+
+  socket.on('ROUND_CLOSE', (data) => {
+    updateBetInputs(true)
+    updateStatusBoard(data.state)
+  })
+
+  socket.on('ROCKET', (data) => {
+    updateRocketStatus(data.game)
+  })
+
+  socket.on('ROUND_END', (data) => {
+    updateStatusBoard(data.state)
+  })
+
+  socket.on('START_SUCCESS', (data) => {
+    console.log('START_SUCCESS', data)
+    PLAYER_ID = data.id
+    updateStartButton()
+    updateStatusBoard(data.state)
+    updateRocketStatus(data.state.game)
+  })
+
+  socket.on('BET_SUCCESS', (data) => {
+    console.log('BET_SUCCESS', data)
+    updateInfoBoard(data)
+    updateStatusBoard(data.state)
+    updateRocketStatus(data.state.game)
+
+    updateThisPlayerOnly(data.id, () => {
+      updateBetsBoard(data.bettedBet)
+    })
+  })
+
+  socket.on('EJECT_SUCCESS', (data) => {
+    console.log('EJECT_SUCCESS', data)
+    updateInfoBoard(data)
+
+    updateThisPlayerOnly(data.id, () => {
+      updateBetsBoard(data.ejectedBet)
+    })
+  })
+
+  socket.on('AUTO_EJECT_SUCCESS', (data) => {
+    console.log('AUTO_EJECT_SUCCESS', data)
+    handleAutoEject(data)
+  })
+
+  const handleStart = () => {
+    socket.emit("START", {
+      action: 'START'
+    });
+  };
+
+  const handleBet = () => {
+    const betAmount = document.getElementById('bet-amount-input').value
+    const autoEjectAt = document.getElementById('auto-eject-at-input').value
+
+    socket.emit("BET", {
+      betAmount: parseInt(betAmount),
+      autoEject: parseInt(autoEjectAt)
+    });
+  };
+
+  const handleEject = (node) => {
+    const betId = node.closest(".card").id
+    socket.emit("EJECT", {
+      betId: betId,
+    });
+  };
+
+  const clearBetsBoard = () => {
+    const betCards = document.querySelectorAll('#bet-cards > div')
+
+    betCards.forEach((bet) => {
+      bet.classList.add('d-none')
+    })
+
+    updateBetInputs()
+  }
+
+  const updateBetsBoard = (bet) => {
+    if (bet.ejectedAt) {
+      const betCard = document.querySelector(`[id='bet-cards'] [id='${bet.betId}']`)
+
+      betCard.classList.add('d-none')
+    } else {
+      const betsCard = document.querySelectorAll('#bet-cards div.d-none')
+      const betCard = betsCard[0]
+
+      if (betCard) {
+        if (betsCard.length === 1) {
+          updateBetInputs(true)
+        }
+
+        const playerBetAmount = bet.betAmount
+        const playerAutoEjectAt = bet.autoEject
+        const betAmount = betCard.querySelector('#bet-amount')
+        const autoEjectAt = betCard.querySelector('#auto-eject-at')
+        betCard.classList.remove("d-none");
+
+        betCard.id = bet.betId
+        betAmount.textContent = `$${playerBetAmount}`
+
+        if (playerAutoEjectAt) {
+          autoEjectAt.textContent = `Auto eject at ${playerAutoEjectAt}x`
+        } else { 
+          autoEjectAt.textContent = `Auto eject Off`
+          autoEjectAt.classList.add("text-muted");
+        }
+      }      
+    }
+    
+  }
+
+  const clearInfoBoard = () => {
+    const infoBoard = document.querySelector('#info-board')
+    infoBoard.innerHTML = ''
+  }
+
+  const handleAutoEject = (data) => {
+    data.autoEjectedBets.forEach((bet) => {
+      updateThisPlayerOnly(bet.playerId, () => {
+        updateBetsBoard(bet)
+      })
+
+      const mapped_data = {
+        id: bet.playerId,
+        ejectedBet: bet
+      }
+
+      updateInfoBoard(mapped_data)
+    })
+  }
+
+  const updateStartButton = () => {
+    const startButton = document.getElementById('start-button')
+    startButton.setAttribute("disabled", "disabled");
+  }
+
+  const updateThisPlayerOnly = (playerId, callback) => {
+    if (playerId === PLAYER_ID) {
+      callback()
+    }
+  }
+
+  const updateBetInputs = (isDisable = false) => {
+    const inputs = document.querySelectorAll('#bet-inputs > *')
+
+    inputs.forEach((input) => {
+      if (isDisable) {
+        input.setAttribute("disabled", "disabled");
+      } else {
+        input.removeAttribute("disabled");
+      }
+    })
+  }
+
+  const updateInfoBoard = (data) => {
+    const playerId = data.id
+    let infoText;
+
+    if (data.bettedBet) {
+      infoText = `${playerId} betted`;
+    } else if(data.ejectedBet) {
+      const ejectedBet = data.ejectedBet
+
+      infoText = `${playerId} ejected at ${ejectedBet.ejectedAt}`;
+    }
+
+    const infoBoard = document.querySelector('#info-board')
+    const info = document.createElement("p");
+
+    info.innerText = infoText
+    infoBoard.appendChild(info);
+
+    infoBoard.scrollTo(0, infoBoard.scrollHeight);
+  }
+
+  const updateRocketStatus = (state) => {
+    const rocketPosition = document.querySelectorAll('#rocket-position')[0]
+    const rocketOnBoardCount = document.querySelectorAll('#rocket-on-board')[0]
+    const rocketEjectCount = document.querySelectorAll('#rocket-eject')[0]
+
+    rocketOnBoardCount.textContent = state.onBoardedCount
+    rocketEjectCount.textContent = state.ejectedCount
+
+    if (state.isCrash) {
+      rocketPosition.textContent = 'Boom'
+    } else {
+      rocketPosition.textContent = state.position
+    }
+  }
+
+  const updateStatusBoard = (state) => {
+    const statusItems = document.querySelectorAll('#status-board span')
+
+    const playerState = state.players[PLAYER_ID]
+    const playerBalance = playerState.balance
+    const stateName = state.round.state
+    const totalPlayers = Object.keys(state.players).length
+
+    const status = [PLAYER_ID, playerBalance, stateName, totalPlayers]
+  
+    statusItems.forEach((item, index) => {
+      item.textContent = status[index]
+    })
+  };
+
+</script>
+<body class="bg-dark text-light">
+  <div class="container-fluid bg-light py-3 text-dark" id="status-board">
+    <div class="row">
+      <div class="col">
+        Player: <span>N/A</span>
+      </div>
+      <div class="col">
+        Balance: <span>N/A</span>
+      </div>
+      <div class="col">
+        Game state: <span>N/A</span>
+      </div>
+      <div class="col">
+        Total players: <span>N/A</span>
+      </div>
+    </div>
+  </div>
+  <hr/>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-8">
+        <div class="d-flex justify-content-start">
+          <button style="width:100px" type="button" id='start-button' class="btn btn-info m-1" onclick="handleStart()">Start</button>
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="d-flex justify-content-between">
+          <p>On Board: <span id='rocket-on-board'>0</span></p> 
+          <p>Eject: <span id='rocket-eject'>0</span></p> 
+        <div>
+      </div>
+    </div>
+  </div>
+  <div class="d-flex justify-content-center my-5">
+    <h1 class="display-4" id='rocket-position'>0</h1>
+  </div>
+  <div class="d-flex">
+    <div id="info-board" style="
+      max-height: 300px;
+      overflow-y: auto;
+      width: fit-content;
+      min-width: 400px;
+      padding-right: 3rem;">
+    </div>
+    <div class="ms-auto" style="width: 400px; height: fit-content;">
+      <div class="mb-2 input-group" id="bet-inputs">
+        <button style="width:100px" type="button" disabled class="btn btn-success" onclick="handleBet()">Bet</button>   
+        <input type="number" class="form-control" disabled placeholder="Bet Amount" id="bet-amount-input" />
+        <input type="number" class="form-control" disabled placeholder="Auto Eject At" id="auto-eject-at-input" />
+      </div>
+      <!-- bet cards -->
+      <diV id='bet-cards'>
+        <div class="card bg-dark my-1 d-none" id='bet-1'>
+          <div class="row g-0">
+            <div class="col-2 p-0">
+              <button style="width:100%; height: 100%;" type="button" class="btn btn-danger" onclick="handleEject(this)">Eject</button> 
+            </div>
+            <div class="col-6 p-0">
+              <div class="card-body p-3">
+                <p class="text-light m-0" id="bet-amount"></p>
+                <p class="text-light m-0" id="auto-eject-at"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card bg-dark my-1 d-none" id='bet-2'>
+          <div class="row g-0">
+            <div class="col-2 p-0">
+              <button style="width:100%; height: 100%;" type="button" class="btn btn-danger" onclick="handleEject(this)">Eject</button> 
+            </div>
+            <div class="col-6 p-0">
+              <div class="card-body p-3">
+                <p class="text-light m-0" id="bet-amount"></p>
+                <p class="text-light m-0" id="auto-eject-at"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card bg-dark my-1 d-none" id='bet-3'>
+          <div class="row g-0">
+            <div class="col-2 p-0">
+              <button style="width:100%; height: 100%;" type="button" class="btn btn-danger" onclick="handleEject(this)">Eject</button> 
+            </div>
+            <div class="col-6 p-0">
+              <div class="card-body p-3">
+                <p class="text-light m-0" id="bet-amount"></p>
+                <p class="text-light m-0" id="auto-eject-at"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </diV>
+    </div>
+  </div>
+</body>
+</html>
