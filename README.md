@@ -1,19 +1,18 @@
 # crash-game-demo
 
-A simple Crash Game Demo. 
+A simple Crash Game Demo.
+
+Website: [https://crash-game-demo.herokuapp.com/crash-game-demo](https://crash-game-demo.herokuapp.com/crash-game-demo)  
+(Note: It might take few seconds to load as Heroku's free server will put to sleep after a certain period of time unused.)
 
 Reference game: [bustabit](https://www.bustabit.com/play).
 
 ### How to play?
-Press START button on the top left, the game will start.
+1. Press START button on the top left, the game will start.
+2. On ROUND_START, place your bet by enter the bet amount and click the 'bet' button on the bottom right of the page.
+3. On ROUND_CLOSE, the multiplier will start to increase, eject the bet before it crashed. 
 
-On ROUND_START, place your bet by enter the bet amount and click the 'bet' button on the bottom right of the page.
-
-On ROUND_CLOSE, the multiplier will start to increase, eject the bet before it crashed. 
-
-Your payout will be the bet amount placed multiplied by the multiplier ejected at.
-
-If the game crashed, you will get nothing.
+Your payout will be the bet amount placed multiplied by the multiplier ejected at. If the game crashed, you will get nothing.
 
 
 ### Project Description
